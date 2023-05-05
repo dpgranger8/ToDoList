@@ -7,7 +7,7 @@
 
 import UIKit
 
-class ItemsViewController: UIViewController {
+class ItemsViewController: UIViewController, UITableViewDelegate {
     
     enum TableSection: Int {
         case incomplete, complete
@@ -18,8 +18,8 @@ class ItemsViewController: UIViewController {
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var tableView: UITableView!
     
-    
     // MARK: - Properties
+    var selectedList: ToDoList?
     
     private let itemManager = ItemManager.shared
     private lazy var datasource: ItemDataSource = {
@@ -39,10 +39,13 @@ class ItemsViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        tableView.delegate = self
         tableView.dataSource = datasource
         generateNewSnapshot()
     }
 
+    // MARK: - Table View Functions
+    
 }
 
 
@@ -63,10 +66,22 @@ extension ItemsViewController: ItemCellDelegate {
 extension ItemsViewController: ItemDelegate {
     
     func deleteItem(at indexPath: IndexPath) {
-        ItemManager.shared.delete(at: indexPath)
-        generateNewSnapshot()
+        guard let selectedList = selectedList else { return }
+        let section = TableSection(rawValue: indexPath.section)!
+        let item: Item
+        switch section {
+        case .incomplete:
+            item = ItemManager.shared.fetchIncompleteItems(for: selectedList)[indexPath.row]
+        case .complete:
+            item = ItemManager.shared.fetchCompletedItems(for: selectedList)[indexPath.row]
+        }
+
+        // Remove the item from the itemManager
+        ItemManager.shared.remove(item)
+
+        // Update the data source and delete the row from the table view
+        generateNewSnapshot(deletingRowAt: indexPath)
     }
-    
 }
 
 
@@ -75,8 +90,8 @@ extension ItemsViewController: ItemDelegate {
 extension ItemsViewController: UITextFieldDelegate {
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        guard let text = textField.text, !text.isEmpty else { return true }
-        itemManager.createNewItem(with: text)
+        guard let text = textField.text, !text.isEmpty, let selectedList = selectedList else { return true }
+        itemManager.createNewItem(with: text, for: selectedList)
         textField.text = ""
         generateNewSnapshot()
         return true
@@ -89,19 +104,37 @@ extension ItemsViewController: UITextFieldDelegate {
 
 private extension ItemsViewController {
     
-    func generateNewSnapshot() {
+    func generateNewSnapshot(deletingRowAt indexPathToDelete: IndexPath? = nil) {
+        guard let selectedList = selectedList else {return}
+        // Create a snapshot
         var snapshot = NSDiffableDataSourceSnapshot<TableSection, Item>()
-        if !itemManager.items.isEmpty {
+        // Fetch incomplete and completed items from Core Data
+        let incompleteItems = itemManager.fetchIncompleteItems(for: selectedList)
+        let completedItems = itemManager.fetchCompletedItems(for: selectedList)
+        
+        // If there are incomplete items to show, add them to the tableview
+        if !incompleteItems.isEmpty {
             snapshot.appendSections([.incomplete])
-            snapshot.appendItems(itemManager.items, toSection: .incomplete)
+            snapshot.appendItems(incompleteItems, toSection: .incomplete)
         }
-        if !itemManager.completedItems.isEmpty {
+        // If there are completed items to show, add them to the tableview
+        if !completedItems.isEmpty {
             snapshot.appendSections([.complete])
-            snapshot.appendItems(itemManager.completedItems, toSection: .complete)
+            snapshot.appendItems(completedItems, toSection: .complete)
         }
+        // Apply the snapshot
         DispatchQueue.main.async {
-            self.datasource.apply(snapshot)
+            self.datasource.apply(snapshot, animatingDifferences: true) {
+                if let indexPath = indexPathToDelete {
+                    // Animate the deletion of the row from the table view
+                    self.tableView.performBatchUpdates({
+                        self.tableView.deleteRows(at: [indexPath], with: .automatic)
+                    }, completion: { _ in
+                        // Reload the table view to ensure correct display of data
+                        self.tableView.reloadData()
+                    })
+                }
+            }
         }
     }
-    
 }

@@ -37,6 +37,11 @@ class ItemTableViewCell: UITableViewCell {
 
     @IBAction func completeButtonPressed(_ sender: Any) {
         guard let item else { return }
+        if completedButton.currentImage == squareImage {
+            completedButton.setImage(checkedImage, for: .normal)
+        } else {
+            completedButton.setImage(squareImage, for: .normal)
+        }
         delegate?.completeButtonPressed(item: item)
     }
     

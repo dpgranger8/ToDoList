@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import CoreData
 
 class ItemManager {
     static let shared = ItemManager()
@@ -21,32 +22,41 @@ class ItemManager {
     
     // Funcs
     
-    func createNewItem(with title: String) {
-        let newItem = Item(title: title)
-        allItems.append(newItem)
+    func fetchIncompleteItems(for list: ToDoList) -> [Item] {
+        let items = list.itemsArray
+        let incompleteItems = items.filter { !$0.isCompleted }
+        PersistenceController.shared.saveContext()
+        return incompleteItems
+    }
+    
+    func fetchCompletedItems(for list: ToDoList) -> [Item] {
+        let items = list.itemsArray
+        let completedItems = items.filter { $0.isCompleted }
+        PersistenceController.shared.saveContext()
+        return completedItems
+    }
+    
+    func createNewItem(with title: String, for list: ToDoList) {
+        let newItem = Item(context: PersistenceController.shared.viewContext)
+        
+        newItem.id = UUID().uuidString
+        newItem.title = title
+        newItem.createdAt = Date()
+        newItem.completedAt = nil
+        newItem.toDoList = list
+        
+        PersistenceController.shared.saveContext()
     }
     
     func toggleItemCompletion(_ item: Item) {
-        var updatedItem = item
-        updatedItem.completedAt = item.isCompleted ? nil : Date()
-        if let index = allItems.firstIndex(of: item) {
-            allItems.remove(at: index)
-        }
-        allItems.append(updatedItem)
-    }
-    
-    func delete(at indexPath: IndexPath) {
-        remove(item(at: indexPath))
+        item.completedAt = item.isCompleted ? nil : Date()
+        PersistenceController.shared.saveContext()
     }
     
     func remove(_ item: Item) {
-        guard let index = allItems.firstIndex(of: item) else { return }
-        allItems.remove(at: index)
-    }
-
-    private func item(at indexPath: IndexPath) -> Item {
-        let items = indexPath.section == 0 ? items : completedItems
-        return items[indexPath.row]
+        let context = PersistenceController.shared.viewContext
+        context.delete(item)
+        PersistenceController.shared.saveContext()
     }
 
 }
